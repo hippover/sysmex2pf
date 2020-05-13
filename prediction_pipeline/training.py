@@ -1,6 +1,6 @@
 import importlib
 from .predictors import KDE_predictor, agg_features_predictor
-from build_features import *
+from .build_sysmex_features import *
 from sklearn.feature_selection import f_regression
 from scipy.stats import pearsonr
 from mpl_toolkits.axes_grid1 import AxesGrid

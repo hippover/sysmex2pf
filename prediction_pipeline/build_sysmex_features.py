@@ -1,5 +1,5 @@
 import pickle
-from sklearn.preprocessing import QuantileTransformer
+from sklearn.preprocessing import QuantileTransformer, PowerTransformer
 from scipy.stats import gaussian_kde
 import numpy as np
 import pandas as pd
@@ -121,7 +121,8 @@ def build_features(df, sys_phen, train_IDs, hor_steps ,vert_steps, plot=False, s
 
         X = X_sample.loc[X_sample['exp'] == exp, selected_columns].copy()
 
-        normalizer = QuantileTransformer(output_distribution="normal").fit(X)
+        #normalizer = QuantileTransformer(output_distribution="normal").fit(X)
+        normalizer = PowerTransformer().fit(X)
         X = normalizer.transform(X)
 
         print("Fitting PCA %s" % exp)
