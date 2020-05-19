@@ -30,57 +30,66 @@ class predictor():
         BIC_pls = np.inf*np.ones((len(self.n_comps_pls), len(self.n_comps_pca), len(self.adjust_y)))
         BIC_lm = np.inf*np.ones((len(self.n_comps_pls), len(self.n_comps_pca), len(self.adjust_y)))
 
-        progress_bar = tqdm(total=n_iter*len(self.n_comps_pls)*len(self.n_comps_pca)*len(self.adjust_y))
+        progress_bar = tqdm(total=len(self.n_comps_pls)*len(self.n_comps_pca)*len(self.adjust_y))
         for i in range(len(self.n_comps_pls)):
             for j in range(len(self.n_comps_pca)):
                 for k in range(len(self.adjust_y)):
-                    score = np.zeros(n_iter)
-                    score_lm = np.zeros(n_iter)
 
-                    for iter_ in range(n_iter):
+                    if self.choice_criterion == "R2":
+                        score = np.zeros(n_iter)
+                        score_lm = np.zeros(n_iter)
+
+                        for iter_ in range(n_iter):
+
+                            X_true = features.copy()
+                            Y_true = Y_.loc[X_true.index].copy()
+
+                            preds, preds_lm, _ = self.predict_in_splits(X_true,Y_true,sys_phen,
+                                                                     self.adjust_y[k],
+                                                                     self.n_comps_pls[i],
+                                                                     self.n_comps_pca[j])
+
+                            score[iter_] = r2_score(Y_true,preds)
+                            score_lm[iter_] = r2_score(Y_true,preds_lm)
+
+                        if self.n_comps_pls[i] >= len(self.good_columns):
+                            scores[i, j, k] = np.mean(score)
+                        scores_lm[i, j, k] = np.mean(score_lm)
+                    elif self.choice_criterion == "BIC":
+                        # To compute the BIC, we train on the whole dataset
 
                         X_true = features.copy()
                         Y_true = Y_.loc[X_true.index].copy()
 
-                        preds, preds_lm = self.predict_in_splits(X_true,Y_true,sys_phen,
-                                                                 self.adjust_y[k],
-                                                                 self.n_comps_pls[i],
-                                                                 self.n_comps_pca[j])
+                        self.train(X_true,Y_true,sys_phen,
+                                   self.adjust_y[k],
+                                   self.n_comps_pls[i],
+                                   self.n_comps_pca[j])
+                        preds_pls, preds_lm, _ = self.predict(X_true,sys_phen,self.adjust_y[k])
+                        error_2_pls = np.std(Y_true - preds_pls)**2
+                        error_2_lm = np.std(Y_true - preds_lm)**2
 
-                        score[iter_] = r2_score(Y_true,preds)
-                        score_lm[iter_] = r2_score(Y_true,preds_lm)
+                        scores[i, j, k] = r2_score(Y_true,preds_pls)
+                        scores_lm[i, j, k] = r2_score(Y_true, preds_lm)
 
-                        progress_bar.update(1)
+                        n_params = 0
+                        # Adjust y
+                        if self.adjust_y[k] == True:
+                            n_params += 4
+                        # PCA, we finally don't count it as it hasn't to do with Y
+                        # Last term because principal components are orthogonal
+                        # n_params += X_true.shape[1]*self.n_comps_pca[j] - comb(self.n_comps_pca[j],2)
+                        # adjust loadings, we don't count them either
+                        # n_params += 4*self.n_comps_pca[j]
+                        # PLS
+                        n_params_pls = n_params + len(self.good_columns)*self.n_comps_pls[i] + self.n_comps_pls[i] - comb(self.n_comps_pls[i],2)
+                        # Only LM
+                        n_params_lm = n_params + self.n_comps_pca[j] * self.n_comps_pls[i] + self.n_comps_pls[i]
+                        if self.n_comps_pls[i] <= len(self.good_columns):
+                            BIC_pls[i,j,k] = preds_pls.shape[0]*np.log(np.mean(error_2_pls)) + n_params_pls*np.log(preds_pls.shape[0])
+                        BIC_lm[i,j,k] = preds_lm.shape[0]*np.log(np.mean(error_2_lm)) + n_params_lm*np.log(preds_lm.shape[0])
 
-                    if self.n_comps_pls[i] >= len(self.good_columns):
-                        scores[i, j, k] = np.mean(score)
-                    scores_lm[i, j, k] = np.mean(score_lm)
-
-                    # To compute the BIC, we train on the whole dataset
-                    self.train(X_true,Y_true,sys_phen,
-                               self.adjust_y[k],
-                               self.n_comps_pls[i],
-                               self.n_comps_pca[j])
-                    preds_pls, preds_lm = self.predict(X_true,sys_phen,self.adjust_y[k])
-                    error_2_pls = np.std(Y_true - preds_pls)**2
-                    error_2_lm = np.std(Y_true - preds_lm)**2
-
-                    n_params = 0
-                    # Adjust y
-                    if self.adjust_y[k] == True:
-                        n_params += 4
-                    # PCA, we finally don't count it as it hasn't to do with Y
-                    # Last term because principal components are orthogonal
-                    # n_params += X_true.shape[1]*self.n_comps_pca[j] - comb(self.n_comps_pca[j],2)
-                    # adjust loadings, we don't count them either
-                    # n_params += 4*self.n_comps_pca[j]
-                    # PLS
-                    n_params_pls = n_params + len(self.good_columns)*self.n_comps_pls[i] + self.n_comps_pls[i] - comb(self.n_comps_pls[i],2)
-                    # Only LM
-                    n_params_lm = n_params + self.n_comps_pca[j] * self.n_comps_pls[i] + self.n_comps_pls[i]
-                    if self.n_comps_pls[i] <= len(self.good_columns):
-                        BIC_pls[i,j,k] = preds.shape[0]*np.log(np.mean(error_2_pls)) + n_params_pls*np.log(preds.shape[0])
-                    BIC_lm[i,j,k] = preds.shape[0]*np.log(np.mean(error_2_lm)) + n_params_lm*np.log(preds.shape[0])
+                    progress_bar.update(1)
 
         progress_bar.close()
 
@@ -98,6 +107,7 @@ class predictor():
             else:
                 BIC = BIC_pls
             best_params = np.unravel_index(np.argmin(BIC), np.shape(BIC))
+            self.best_BIC = np.min(BIC)
         else:
             raise Exception("choice_critetrion should be BIC or R2")
 
@@ -119,6 +129,7 @@ class predictor():
 
         preds = pd.Series(data=np.zeros(X_true.shape[0]),index=X_true.index)
         preds_lm = pd.Series(data=np.zeros(X_true.shape[0]),index=X_true.index)
+        preds_sysmex = pd.Series(data=np.zeros(X_true.shape[0]), index=X_true.index)
         skf = StratifiedKFold(n_splits=12)
 
         for train, test in skf.split(X_true,Y_true > np.median(Y_true)):
@@ -137,9 +148,9 @@ class predictor():
                        adjust_y,
                        n_comps_pls,
                        n_comps_pca)
-            preds.loc[index_test], preds_lm.loc[index_test] = self.predict(X_test,sys_phen.loc[index_test],adjust_y)
+            preds.loc[index_test], preds_lm.loc[index_test], preds_sysmex.loc[index_test] = self.predict(X_test,sys_phen.loc[index_test],adjust_y)
 
-        return preds, preds_lm
+        return preds, preds_lm, preds_sysmex
 
     def train(self,X_t,Y_t,sys_phen,adjust_y,n_comps_pls,n_comps_pca):
 
@@ -194,14 +205,16 @@ class predictor():
         preds = pd.Series(data=self.pls.predict(X_.iloc[:,self.good_columns])[:,0] + sys_pred,index=X_.index)
         preds_lm = pd.Series(data=self.lm.predict(X_load) + sys_pred,index=X_.index)
 
-        return preds, preds_lm
+        return preds, preds_lm, sys_pred
 
-    def predict_with_best(self,X_,sys_phen):
+    def predict_with_best(self,X_,sys_phen, return_sysmex = False):
         assert self.best_params_found == True
         assert self.best_params_set == True
-        pred_pls, pred_loading = self.predict(X_,sys_phen,
+        pred_pls, pred_loading, pred_sysmex = self.predict(X_,sys_phen,
                                               self.best_adjust_y)
-        if self.best_only_loadings:
+        if return_sysmex:
+            return pred_sysmex
+        elif self.best_only_loadings:
             return pred_loading
         else:
             return pred_pls
@@ -228,11 +241,11 @@ class KDE_predictor(predictor):
         super().__init__(pheno_name+"_KDE",criterion)
         self.n_comps_pls = [1,2,3,4]
         self.n_comps_pca = [3,4,5,6,7]
-        self.adjust_y = [True,False]
+        self.adjust_y = [True]
 
 class agg_features_predictor(predictor):
     def __init__(self,pheno_name="pheno_name",criterion="R2"):
         super().__init__(pheno_name+"_agg",criterion)
         self.n_comps_pls = [1,2,3]
         self.n_comps_pca = [1,2,3,4]
-        self.adjust_y = [True,False]
+        self.adjust_y = [True]

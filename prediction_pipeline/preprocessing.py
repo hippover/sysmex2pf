@@ -222,12 +222,21 @@ def get_clusters(X_t):
     """
     th_0 = 110
     th_1 = 95
-    # To keep density roughly uniform, I contract the tail of the platelet cloud
+    # To keep density roughly uniform, I contract the upper-tail of the platelet cloud
     # X_t[np.where(X_t[:, 0] > th), 0] = th + 0.1 * (X_t[np.where(X_t[:, 0] > th), 0] - th)
     X_t[:, 0] = np.clip(X_t[:, 0], a_min=0, a_max=th_0) + 0.1 * np.clip(X_t[:, 0] - th_0, a_min=0, a_max=np.inf)
     X_t[:, 1] = np.clip(X_t[:, 1], a_min=0, a_max=th_1) + 0.2 * np.clip(X_t[:, 1] - th_1, a_min=0, a_max=np.inf)
     X_t[:, 0] = np.clip(X_t[:, 0], a_min=0, a_max=40) + 0.8 * np.clip(X_t[:, 0] - 40, a_min=0, a_max=np.inf)
     X_t[:, 0] = 30 + np.clip(X_t[:, 0] - 30, a_min=0, a_max=np.inf) - 1.5 * np.clip(30 - X_t[:,0], a_min=0, a_max=30)
+
+    # I also extend the bottom tail
+    th_2 = 30
+    th_3 = 20
+    #X_t[2*X_t[:,0] + X_t[:,1] < 70] *= 0.7
+    #X_t[:, 0] = np.clip(X_t[:, 0], a_min=th_2, a_max=np.inf) + 1.5 * np.clip(X_t[:, 0] - th_2, a_min=-np.inf, a_max=0)
+    #X_t[:, 1] = np.clip(X_t[:, 1], a_min=th_3, a_max=np.inf) + 1.5 * np.clip(X_t[:, 1] - th_3, a_min=-np.inf, a_max=0)
+
+
     ms = max(X_t.shape[0] / 800, 10)
     #eps = 4 + 5.5 * np.exp(-X_t.shape[0] / 3e3)
     eps = 3.3
@@ -249,6 +258,13 @@ def get_clusters(X_t):
     return db.labels_
 
 def refine_clustering(X,labels,selected_cluster):
+    """
+    Sometimes, cells which are a bit above the platelets cloud are included. We get rid of them.
+    :param X:
+    :param labels:
+    :param selected_cluster:
+    :return:
+    """
 
     Y = X[labels==selected_cluster]
     pca = PCA().fit(Y)
@@ -292,6 +308,9 @@ def tag_platelets_of_assay(X):
     # print(len(valid_labels),selected_cluster,sel_c_index)
 
     labels = refine_clustering(X,labels,selected_cluster)
+    # We check if the cluster doesn't go left until the edge
+    #if np.min(X[:,0]) < np.min(X[labels == selected_cluster,0]) * 1.01:
+    #
 
     return 1 * (labels == selected_cluster)
 

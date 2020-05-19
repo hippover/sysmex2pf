@@ -1,5 +1,5 @@
 import pickle
-from sklearn.preprocessing import QuantileTransformer, PowerTransformer
+from sklearn.preprocessing import QuantileTransformer, PowerTransformer, RobustScaler
 from scipy.stats import gaussian_kde
 import numpy as np
 import pandas as pd
@@ -35,7 +35,13 @@ def kernel_estimates(df,steps):
     """
     hor_steps, vert_steps = steps
     kernel = gaussian_kde(df[[0,1]].transpose())# ,bw_method=0.31
-    X, Y = np.mgrid[-6:6:complex(0,hor_steps), -2.5:2:complex(0,vert_steps)]
+    #X, Y = np.mgrid[-6:6:complex(0,hor_steps), -2.5:2:complex(0,vert_steps)]
+    #X, Y = np.mgrid[-4:7:complex(0, hor_steps), -2:2:complex(0, vert_steps)]
+
+    X = np.quantile(df[0],np.linspace(0.01,0.99,hor_steps))
+    Y = np.quantile(df[1],np.linspace(0.01,0.99,vert_steps))
+    X,Y = np.meshgrid(X,Y)
+
     positions = np.vstack([X.ravel(), Y.ravel()])
     Z = np.reshape(kernel(positions).T, X.shape)
     return pd.Series(data=np.reshape(Z,(-1)),index=["KDE_%d"% f for f in np.arange(hor_steps*vert_steps)])
@@ -122,7 +128,8 @@ def build_features(df, sys_phen, train_IDs, hor_steps ,vert_steps, plot=False, s
         X = X_sample.loc[X_sample['exp'] == exp, selected_columns].copy()
 
         #normalizer = QuantileTransformer(output_distribution="normal").fit(X)
-        normalizer = PowerTransformer().fit(X)
+        #normalizer = PowerTransformer().fit(X)
+        normalizer = RobustScaler().fit(X)
         X = normalizer.transform(X)
 
         print("Fitting PCA %s" % exp)
