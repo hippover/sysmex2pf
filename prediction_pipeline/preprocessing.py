@@ -15,6 +15,7 @@ from sklearn.neighbors import LocalOutlierFactor, NearestNeighbors
 from scipy.stats import gaussian_kde
 from sklearn.mixture import BayesianGaussianMixture
 from sklearn.decomposition import PCA
+from tqdm.notebook import tqdm
 
 import time
 
@@ -47,10 +48,16 @@ def build_df(files, exp):
             users[i] = users[i][:-2]
 
     dfs = []
+    appended_IDs = []
     for k in range(len(users)):
-        meas = FCMeasurement(ID='Test Sample', datafile=files[k]).data[columns]
-        meas["ID"] = users[k]
-        dfs.append(meas.copy())
+        ID = users[k]
+        if ID not in appended_IDs:
+            meas = FCMeasurement(ID='Test Sample', datafile=files[k]).data[columns]
+            meas["ID"] = ID
+            dfs.append(meas.copy())
+            appended_IDs.append(users[k])
+        else:
+            print("Duplicate file for ID %s : %s" % (ID,files[k]))
 
     df_ = pd.concat(dfs, copy=False)
     df_.reset_index(inplace=True)
@@ -65,12 +72,13 @@ def build_df(files, exp):
     return df_.loc[select_cond]
 
 
-def load_Sysmex():
+def load_Sysmex(datadir):
     """
     :return: dataframe of all valid measurements (not only platelets)
     """
     os.chdir(datadir)
     wb = glob.glob("Sysmex whole blood/**/*PLT-F].fcs", recursive=True)
+    print("%d candidates Sysmex WB files" % len(wb))
 
     files_exp = [[wb, "wb"]]
 
@@ -140,14 +148,13 @@ def load_info():
     return info
 
 
-def load_sys_phenotypes():
+def load_sys_phenotypes(datadir):
     """
     :return: A dataframe containing IPF, PLT, PCT, MPV and PDW for all donors x assays
     """
     os.chdir(datadir)
-    summaries = glob.glob("Sysmex whole blood/*/*_SAMPLE.csv") \
-                + glob.glob("Sysmex whole blood/*/*/*_SAMPLE.csv") \
-                + glob.glob("Sysmex whole blood/*/*/*/*_SAMPLE.csv")
+    summaries = glob.glob("Sysmex whole blood/**/*SAMPLE*.csv",recursive=True)
+    print("%d candidates summary files" % len(summaries))
     IDs = list()
     exps = list()
     PLTs = list()
@@ -158,6 +165,7 @@ def load_sys_phenotypes():
     PCTs = list()
     dates = list()
 
+    n_errors = 0
     for f in summaries:
         s = pd.read_csv(f, skiprows=1)
         ID = [s["Sample No."].iloc[i][:-2].lstrip(" ") for i in range(s.shape[0])]
@@ -167,14 +175,15 @@ def load_sys_phenotypes():
         try:
             PLT = s["PLT(10^9/L)"].tolist()
             IPF = s["IPF(%)"].tolist()
-            is_PLT_F = [1 * (source == "PLT-F") for source in s["PLT Info."]]
             MPV = s["MPV(fL)"].tolist()
             PDW = s["PDW(fL)"].tolist()
             PCT = s["PCT(%)"].tolist()
+            is_PLT_F = [1 * (source == "PLT-F") for source in s["PLT Info."]]
         except BaseException as error:
             print(f)
             print(s.columns)
             print(error)
+            n_errors += 1
             continue
 
         IDs += ID
@@ -197,7 +206,7 @@ def load_sys_phenotypes():
             print("Missing values of %s : %.2f" % (c, (plt_df[c] == "----").mean()))
             plt_df.loc[plt_df[c] == "----", c] = plt_df.loc[plt_df[c] != "----", c].median()
             plt_df[c] = plt_df[c].astype(float)
-
+    print("Reading errors : %d" % n_errors)
     plt_df = plt_df.sort_values("is_PLT_F", ascending=False)
     plt_df = plt_df.drop_duplicates(["ID", "exp"], keep="first")
 
@@ -213,21 +222,31 @@ def get_clusters(X_t):
     """
     th_0 = 110
     th_1 = 95
-    # To keep density roughly uniform, I contract the tail of the platelet cloud
+    # To keep density roughly uniform, I contract the upper-tail of the platelet cloud
     # X_t[np.where(X_t[:, 0] > th), 0] = th + 0.1 * (X_t[np.where(X_t[:, 0] > th), 0] - th)
     X_t[:, 0] = np.clip(X_t[:, 0], a_min=0, a_max=th_0) + 0.1 * np.clip(X_t[:, 0] - th_0, a_min=0, a_max=np.inf)
     X_t[:, 1] = np.clip(X_t[:, 1], a_min=0, a_max=th_1) + 0.2 * np.clip(X_t[:, 1] - th_1, a_min=0, a_max=np.inf)
     X_t[:, 0] = np.clip(X_t[:, 0], a_min=0, a_max=40) + 0.8 * np.clip(X_t[:, 0] - 40, a_min=0, a_max=np.inf)
     X_t[:, 0] = 30 + np.clip(X_t[:, 0] - 30, a_min=0, a_max=np.inf) - 1.5 * np.clip(30 - X_t[:,0], a_min=0, a_max=30)
+
+    # I also extend the bottom tail
+    th_2 = 30
+    th_3 = 20
+    #X_t[2*X_t[:,0] + X_t[:,1] < 70] *= 0.7
+    #X_t[:, 0] = np.clip(X_t[:, 0], a_min=th_2, a_max=np.inf) + 1.5 * np.clip(X_t[:, 0] - th_2, a_min=-np.inf, a_max=0)
+    #X_t[:, 1] = np.clip(X_t[:, 1], a_min=th_3, a_max=np.inf) + 1.5 * np.clip(X_t[:, 1] - th_3, a_min=-np.inf, a_max=0)
+
+
     ms = max(X_t.shape[0] / 800, 10)
-    eps = 4 + 5.5 * np.exp(-X_t.shape[0] / 3e3)
+    #eps = 4 + 5.5 * np.exp(-X_t.shape[0] / 3e3)
+    eps = 3.3
 
     # According to documentation, DBSCAN is more memoy-efficient
     # when the neighboring graph is precomputed.
-    nn = NearestNeighbors(radius=eps, n_jobs=4)
+    nn = NearestNeighbors(radius=eps, n_jobs=-1)
     nn.fit(X_t)
     neighbors = nn.radius_neighbors_graph(X_t, mode='distance')
-    db = DBSCAN(eps=eps, n_jobs=4, min_samples=ms, metric='precomputed').fit(neighbors)
+    db = DBSCAN(eps=eps, n_jobs=-1, min_samples=ms, metric='precomputed').fit(neighbors)
     
     """
     plt.figure()
@@ -239,6 +258,13 @@ def get_clusters(X_t):
     return db.labels_
 
 def refine_clustering(X,labels,selected_cluster):
+    """
+    Sometimes, cells which are a bit above the platelets cloud are included. We get rid of them.
+    :param X:
+    :param labels:
+    :param selected_cluster:
+    :return:
+    """
 
     Y = X[labels==selected_cluster]
     pca = PCA().fit(Y)
@@ -254,12 +280,12 @@ def refine_clustering(X,labels,selected_cluster):
     # Detect the discontinuity, if there is one
     m = np.median(X_t[:,1]) - 4*np.std(X_t[:,1])
     M = np.median(X_t[:,1]) + 4*np.std(X_t[:,1])
-    n_bins = 50
-    hist,edges = np.histogram(X_t[:,1],bins=np.linspace(m,M,n_bins),density=True)
+    n_bins = 35
+    hist,edges = np.histogram(X_t[:,1],bins=np.linspace(m,M,n_bins),density=False)
     summit = np.argmax(hist)
     first_0 = n_bins-2
 
-    min_hist = 1 / (20*n_bins)
+    min_hist = 3 # If a slice has less than min_hist cells, then we consider this slice to be a gap and the end of platelets.
     for k in range(summit,n_bins-2):
         if hist[k] < min_hist:
             first_0 = k
@@ -282,10 +308,13 @@ def tag_platelets_of_assay(X):
     # print(len(valid_labels),selected_cluster,sel_c_index)
 
     labels = refine_clustering(X,labels,selected_cluster)
+    # We check if the cluster doesn't go left until the edge
+    #if np.min(X[:,0]) < np.min(X[labels == selected_cluster,0]) * 1.01:
+    #
 
     return 1 * (labels == selected_cluster)
 
-def tag_platelets(df):
+def tag_platelets(df, export_folder):
     """
     This is where platelets are tagged
     A few cells are discarded by hand using simple gating, partly to reduce
@@ -301,14 +330,14 @@ def tag_platelets(df):
     df["PLT"] = 0
     n = 0
     ids = df.ID.unique().tolist()
+    ids = np.random.permutation(ids)
 
     exps = df.exp.unique()
     for exp in exps:
-        if not os.path.exists("/home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hv270/clustering_train/%s" % exp):
-            os.makedirs("/home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hv270/clustering_train/%s" % exp)
+        if not os.path.exists("%s/clustering_train/%s" % (export_folder,exp)):
+            os.makedirs("%s/clustering_train/%s" % (export_folder,exp))
 
-    for ID in ids:
-        print(n, len(ids), ID)
+    for ID in tqdm(ids):
         n += 1
 
         '''cond_0 = (df["Side Fluorescence Signal"] > 17.5) \
@@ -320,7 +349,8 @@ def tag_platelets(df):
         cond_0 = (df["Side Fluorescence Signal"] > 17.5) \
             & (df.ID == ID) \
             & (df["Side Fluorescence Signal"] <= 220) \
-            & (df["Forward Scatter Signal"] < 190)
+            & (df["Forward Scatter Signal"] < 190) \
+            & (df["Forward Scatter Signal"] < df ["Side Fluorescence Signal"] + 70)
 
         for exp in exps:
             cond = (df.exp == exp) & cond_0
@@ -328,56 +358,15 @@ def tag_platelets(df):
 
             df.loc[cond, "PLT"] = tag_platelets_of_assay(X)
 
-            '''
-            Because of the deformations of the plane which we apply to compensate for the heterogeneity of 
-            densities in the platelet cloud, there might be some unwanted cells. 
-            We get rid of them by thresholding along the second principal component.
-            '''
-            X = df.loc[df.PLT > 0,['Side Fluorescence Signal', 'Forward Scatter Signal']].copy().values
-            pca = PCA().fit(X)
-            if pca.components_[1,0] > 0:
-                pca.components_[1,:] = - pca.components_[1,:]
-
-
-            # This is a bit cheating, but I'm rorating a bit the PCA matrix to better cut out the outliers
-            alpha=-0.035
-            M = np.array([[np.cos(alpha),np.sin(alpha)],[-np.sin(alpha),np.cos(alpha)]])
-            pca.components_ = M @ pca.components_
-            X_t = pca.transform(X)
-
-            # Detect the discontinuity, if there is one
-            m = np.median(X_t[:,1]) - 4*np.std(X_t[:,1])
-            M = np.median(X_t[:,1]) + 4*np.std(X_t[:,1])
-            n_bins = 50
-            hist,edges = np.histogram(X_t[:,1],bins=np.linspace(m,M,n_bins),density=False)
-            summit = np.argmax(hist)
-            first_0 = n_bins-2
-            zero = "no zero"
-            min_hist = 5 # If a slice has less than 5 cells, then we consider this slice to be a gap and the end of platelets.
-            for k in range(summit,n_bins-2):
-                if hist[k] < min_hist:
-                    first_0 = k  # Let's be conservative
-                    zero = "one bin"
-                    break
-                elif hist[k-1] + hist[k] < 2.5*min_hist:
-                    first_0 = k  # Let's be conservative
-                    zero = "average of two bins"
-                    break
-            #print("First 0 edge = %d, n_bins = %d, %s" % (first_0,n_bins,zero))
-            first_0_index = first_0
-            first_0 = edges[first_0_index]
-            df.loc[df.PLT > 0,"PLT"] = 1*(X_t[:,1] < first_0)
-
             if exp == "wb":
 
                 fig = plt.figure()
                 ax = fig.add_subplot(111)
                 ax.scatter(df.loc[cond,"Side Fluorescence Signal"],
                     df.loc[cond,"Forward Scatter Signal"],
-                    c=df.loc[cond,"PLT"],s=4)
-                ax.set_title("%s %s %s" % (ID,exp,zero))
-                print("Saving figure")
-                plt.savefig("/home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hv270/clustering_train/%s/%s.png" % (exp,ID))
+                    c=df.loc[cond,"PLT"],s=1)
+                ax.set_title("%s %s" % (ID,exp))
+                plt.savefig("%s/clustering_train/%s/%s.png" % (export_folder,exp,ID))
 
     print("%.2f  of cells are platelets" % (df["PLT"].mean()))
 
