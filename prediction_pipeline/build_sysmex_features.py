@@ -28,6 +28,11 @@ def mode(x):
     q,b = np.histogram(x,bins=15)
     return 0.5*(b[np.argmax(q)] + b[np.argmax(q) + 1])
 
+def entropy(x):
+    p,_ = np.histogram(x,bins=100,density=False)
+    p = p / np.sum(p)
+    return -np.nansum(p*np.log(p))
+
 def kernel_estimates(df,steps):
     """
     :param df: Sysmex measurements (PC 1 and 2)
@@ -58,30 +63,44 @@ def get_features_per_ID(X,mpv,plt_count,pdw,pct,hor_steps,vert_steps):
     high_20_1 = g[1].quantile(0.95)
     low_20_0 = g[0].quantile(0.05)
     low_20_1 = g[1].quantile(0.05)
+    high_50_0 = g[0].quantile(0.98)
+    high_50_1 = g[1].quantile(0.98)
+    low_50_0 = g[0].quantile(0.02)
+    low_50_1 = g[1].quantile(0.02)
     std_0 = g[0].std()
     std_1 = g[1].std()
     mean_0 = g[0].mean()
     mean_1 = g[1].mean()
     mode_0 = g.agg({0: mode})[0]
     mode_1 = g.agg({1: mode})[1]
+    S_0 = g.agg({0:entropy})[0]
+    S_1 = g.agg({1:entropy})[1]
 
-    kde = g.apply(kernel_estimates, (hor_steps, vert_steps))
+    #kde = g.apply(kernel_estimates, (hor_steps, vert_steps))
 
     ratio_10 = (high_10_1 - low_10_1) / (high_10_0 - low_10_0)
     ratio_20 = (high_20_1 - low_20_1) / (high_20_0 - low_20_0)
     mean_std_0 = mean_0 / std_0
     mean_std_1 = mean_1 / std_1
 
+    iqr_0 = g[0].quantile(0.75) - g[0].quantile(0.25)
+    iqr_1 = g[1].quantile(0.75) - g[1].quantile(0.25)
+
+
     corr = g[[0, 1]].corr().loc[(slice(None), 0), 1].droplevel(1)
 
     features = pd.DataFrame(data={"high_10_0": high_10_0, "high_10_1": high_10_1,
                                        "high_20_0": high_20_0, "high_20_1": high_20_1,
+                                       "high_50_0": high_50_0, "high_50_1": high_50_1,
                                        "low_10_0": low_10_0, "low_10_1": low_10_1,
                                        "low_20_0": low_20_0, "low_20_1": low_20_1,
+                                       "low_50_0": low_50_0, "low_50_1": low_50_1,
                                        "mean_0": mean_0, "mean_1": mean_1,
                                        "ratio_10": ratio_10, "ratio_20": ratio_20,
                                        "mean_std_0": mean_std_0, "mean_std_1": mean_std_1,
                                        "mode_0": mode_0, "mode_1": mode_1,
+                                       "S_0": S_0, "S_1": S_1,
+                                       "iqr_0":iqr_0,"iqr_1":iqr_1,
                                        "corr": corr
                                        })
 
@@ -95,7 +114,8 @@ def get_features_per_ID(X,mpv,plt_count,pdw,pct,hor_steps,vert_steps):
         features.loc[features[c] == np.inf, c] = features.loc[features[c] < np.inf, c].max() * 1.5
         features.loc[features[c] == -np.inf, c] = features.loc[features[c] > -np.inf, c].min() * 1.5
 
-    features = pd.merge(features, kde, left_index=True, right_index=True,how="inner")
+    print("Not computing KDE !")
+    #features = pd.merge(features, kde, left_index=True, right_index=True,how="inner")
 
     features = features.dropna(how="any",axis=0)
 
@@ -177,5 +197,8 @@ def build_features(df, sys_phen, train_IDs, hor_steps ,vert_steps, plot=False, s
         plt.tight_layout()
 
     assert features.shape[1] == len(set(features.columns.tolist()))
+
+    features -= features.loc[train_IDs].mean(axis=0)
+    features /= features.loc[train_IDs].std(axis=0)
 
     return features, pd.concat(X_s, axis=0, sort=True)
