@@ -1,0 +1,55 @@
+Changed directory to /home/hv270/sysmex2pf/genotypes_processing.
+
+JobID: 28152076
+======
+Time: mar. sept.  1 13:54:16 BST 2020
+Running on master node: cpu-e-108
+Current directory: /home/hv270/sysmex2pf/genotypes_processing
+
+Nodes allocated:
+================
+cpu-e-108
+
+numtasks=24, numnodes=1, mpi_tasks_per_node=24 (OMP_NUM_THREADS=24)
+
+Executing command:
+==================
+/home/hv270/sysmex2pf/genotypes_processing/compute_PCA.sh 
+
+PLINK v2.00a2LM 64-bit Intel (24 Jul 2019)     www.cog-genomics.org/plink/2.0/
+(C) 2005-2019 Shaun Purcell, Christopher Chang   GNU General Public License v3
+Logging to /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/principal_components/PC.log.
+Options in effect:
+  --bfile /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hv270/interval_genotypes/chr_1
+  --extract /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/indep_snps_sets/chr_1.prune.in
+  --keep /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/king-cutoff.king.cutoff.in.id
+  --maf 0.01
+  -- /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/principal_components/PC
+  --pca 10 approx
+  --threads 24
+
+Start time: Tue Sep  1 13:54:16 2020
+191837 MiB RAM detected; reserving 95918 MiB for main workspace.
+Using up to 24 threads (change this with --threads).
+43059 samples (0 females, 0 males, 43059 ambiguous; 43059 founders) loaded from
+/home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hv270/interval_genotypes/chr_1.fam.
+779187 variants loaded from
+/home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hv270/interval_genotypes/chr_1.bim.
+Note: No phenotype data present.
+--extract: 9683 variants remaining.
+--keep: 41965 samples remaining.
+41965 samples (0 females, 0 males, 41965 ambiguous; 41965 founders) remaining
+after main filters.
+Calculating allele frequencies... 0%9%18%26%34%41%48%64%71%78%86%93%done.
+675 variants removed due to allele frequency threshold(s)
+(--maf/--max-maf/--mac/--max-mac).
+9008 variants remaining after main filters.
+Projecting random vectors (23 compute threads)... Projecting random vectors (23 compute threads)... 1/11Projecting random vectors (23 compute threads)... 2/11Projecting random vectors (23 compute threads)... 3/11Projecting random vectors (23 compute threads)... 4/11Projecting random vectors (23 compute threads)... 5/11Projecting random vectors (23 compute threads)... 6/11Projecting random vectors (23 compute threads)... 7/11Projecting random vectors (23 compute threads)... 8/11Projecting random vectors (23 compute threads)... 9/11Projecting random vectors (23 compute threads)... 10/11Projecting random vectors (23 compute threads)... 11/11.
+Computing SVD of Krylov matrix... done.
+Recovering top PCs from range approximation... done.
+--pca approx: Eigenvectors written to
+/home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/principal_components/PC.eigenvec
+, and eigenvalues written to
+/home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/principal_components/PC.eigenval
+.
+End time: Tue Sep  1 13:54:47 2020

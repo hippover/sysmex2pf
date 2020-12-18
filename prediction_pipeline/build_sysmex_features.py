@@ -114,7 +114,7 @@ def get_features_per_ID(X,mpv,plt_count,pdw,pct,hor_steps,vert_steps):
         features.loc[features[c] == np.inf, c] = features.loc[features[c] < np.inf, c].max() * 1.5
         features.loc[features[c] == -np.inf, c] = features.loc[features[c] > -np.inf, c].min() * 1.5
 
-    print("Not computing KDE !")
+    #print("Not computing KDE !")
     #features = pd.merge(features, kde, left_index=True, right_index=True,how="inner")
 
     features = features.dropna(how="any",axis=0)
@@ -146,10 +146,10 @@ def build_features(df, sys_phen, train_IDs, hor_steps ,vert_steps, plot=False, s
     for exp in exps:
 
         X = X_sample.loc[X_sample['exp'] == exp, selected_columns].copy()
-
-        #normalizer = QuantileTransformer(output_distribution="normal").fit(X)
+        ##print(X.mean())
+        normalizer = QuantileTransformer(output_distribution="normal").fit(X)
         #normalizer = PowerTransformer().fit(X)
-        normalizer = RobustScaler().fit(X)
+        #normalizer = RobustScaler().fit(X)
         X = normalizer.transform(X)
 
         print("Fitting PCA %s" % exp)
@@ -159,12 +159,16 @@ def build_features(df, sys_phen, train_IDs, hor_steps ,vert_steps, plot=False, s
 
         if save_pca:
             print("Saving PCA of %s" % exp)
-            pkl_filename = "%s/sysmex_pca_%s.pkl" % (out_folder,exp)
-            with open(pkl_filename, 'wb') as file:
+            pca_pkl_filename = "%s/sysmex_pca_%s.pkl" % (out_folder,exp)
+            with open(pca_pkl_filename, 'wb') as file:
                 pickle.dump(pca, file)
+            norm_pkl_filename = "%s/sysmex_norm_%s.pkl" % (out_folder,exp)
+            with open(norm_pkl_filename, "wb") as file:
+                pickle.dump(normalizer, file)
 
         d.loc[d.exp == exp, selected_columns] = normalizer.transform(d.loc[d.exp == exp, selected_columns])
-
+        print(d.loc[d.exp == exp,selected_columns].mean())
+        print(d.loc[d.exp == exp, selected_columns].std()) 
         X_t = pca.transform(d.loc[d.exp == exp, selected_columns].values)
         X = pd.DataFrame(data=X_t, index=d.loc[d.exp == exp].index)
         X["ID"] = d.loc[d.exp == exp, "ID"]
@@ -173,6 +177,11 @@ def build_features(df, sys_phen, train_IDs, hor_steps ,vert_steps, plot=False, s
         plt_count = sys_phen.loc[sys_phen.exp == exp].rename(columns={"PLT_count":"PLT"}).groupby("ID")["PLT"].mean()
         pdw = sys_phen.loc[sys_phen.exp == exp].groupby("ID")["PDW"].mean()
         pct = sys_phen.loc[sys_phen.exp == exp].groupby("ID")["PCT"].mean()
+
+        print(mpv.mean())
+        print(plt_count.mean())
+        print(pdw.mean())
+        print(pct.mean())
 
         features[exp] = get_features_per_ID(X,mpv,plt_count,pdw,pct,hor_steps,vert_steps)
 
@@ -198,7 +207,13 @@ def build_features(df, sys_phen, train_IDs, hor_steps ,vert_steps, plot=False, s
 
     assert features.shape[1] == len(set(features.columns.tolist()))
 
-    features -= features.loc[train_IDs].mean(axis=0)
-    features /= features.loc[train_IDs].std(axis=0)
+    f_scaler = RobustScaler().fit(features.loc[train_IDs])
+    #features -= features.loc[train_IDs].mean(axis=0)
+    #features /= features.loc[train_IDs].std(axis=0)
+    features[features.columns] = f_scaler.transform(features)
+    #print(features.mean())
+    if save_pca:
+        with open("%s/sysmex_f_scaler_%s.pkl" % (out_folder, exp),"wb") as file:
+            pickle.dump(f_scaler, file)
 
     return features, pd.concat(X_s, axis=0, sort=True)
