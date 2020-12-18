@@ -6,6 +6,7 @@ import os
 from FlowCytometryTools import FCMeasurement
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.path as mplPath
 import glob
 
 import numpy as np
@@ -15,7 +16,7 @@ from sklearn.neighbors import LocalOutlierFactor, NearestNeighbors
 from scipy.stats import gaussian_kde
 from sklearn.mixture import BayesianGaussianMixture
 from sklearn.decomposition import PCA
-from tqdm.notebook import tqdm
+from tqdm import tqdm
 
 import time
 
@@ -67,7 +68,8 @@ def build_df(files, exp):
     print(exp, len(df_.ID.unique().tolist()))
 
     select_cond = (df_["Side Fluorescence Signal"] > 0.1) & \
-                  (df_["Side Fluorescence Signal"] <= 220)
+                  (df_["Side Fluorescence Signal"] <= 220) & \
+                  (df_["Forward Scatter Signal"] <= 200)
 
     return df_.loc[select_cond]
 
@@ -214,107 +216,73 @@ def load_sys_phenotypes(datadir):
 
 # Actual clustering happens here
 
-def get_clusters(X_t):
-    """
-    clusters cells using DBSCAN
-    :param X_t: n x 2 array containing ['Side Fluorescence Signal', 'Forward Scatter Signal']
-    :return: labels
-    """
-    th_0 = 110
-    th_1 = 95
-    # To keep density roughly uniform, I contract the upper-tail of the platelet cloud
-    # X_t[np.where(X_t[:, 0] > th), 0] = th + 0.1 * (X_t[np.where(X_t[:, 0] > th), 0] - th)
-    X_t[:, 0] = np.clip(X_t[:, 0], a_min=0, a_max=th_0) + 0.1 * np.clip(X_t[:, 0] - th_0, a_min=0, a_max=np.inf)
-    X_t[:, 1] = np.clip(X_t[:, 1], a_min=0, a_max=th_1) + 0.2 * np.clip(X_t[:, 1] - th_1, a_min=0, a_max=np.inf)
-    X_t[:, 0] = np.clip(X_t[:, 0], a_min=0, a_max=40) + 0.8 * np.clip(X_t[:, 0] - 40, a_min=0, a_max=np.inf)
-    X_t[:, 0] = 30 + np.clip(X_t[:, 0] - 30, a_min=0, a_max=np.inf) - 1.5 * np.clip(30 - X_t[:,0], a_min=0, a_max=30)
-
-    # I also extend the bottom tail
-    th_2 = 30
-    th_3 = 20
-    #X_t[2*X_t[:,0] + X_t[:,1] < 70] *= 0.7
-    #X_t[:, 0] = np.clip(X_t[:, 0], a_min=th_2, a_max=np.inf) + 1.5 * np.clip(X_t[:, 0] - th_2, a_min=-np.inf, a_max=0)
-    #X_t[:, 1] = np.clip(X_t[:, 1], a_min=th_3, a_max=np.inf) + 1.5 * np.clip(X_t[:, 1] - th_3, a_min=-np.inf, a_max=0)
-
-
-    ms = max(X_t.shape[0] / 800, 10)
-    #eps = 4 + 5.5 * np.exp(-X_t.shape[0] / 3e3)
-    eps = 3.3
-
-    # According to documentation, DBSCAN is more memoy-efficient
-    # when the neighboring graph is precomputed.
-    nn = NearestNeighbors(radius=eps, n_jobs=-1)
-    nn.fit(X_t)
-    neighbors = nn.radius_neighbors_graph(X_t, mode='distance')
-    db = DBSCAN(eps=eps, n_jobs=-1, min_samples=ms, metric='precomputed').fit(neighbors)
+def polygon_with_offset(offset):
+    alpha = ((120+.6*offset) - (25+ .5*offset)) / (85 - 25)
     
+    p = np.array([[22,25,30,85 ,140,200,200,80,50,22],
+                  [5 + .3*offset ,25+ .5*offset,max(35+.5*offset,25+.5*offset + alpha*5),120+.6*offset,180+.6*offset,220,170,20,0,5+ .3*offset]])
+    #p[0] -= offset
+    return p.T
+
+def tag_platelets_of_assay(X, expected):
+    #print("Using polygon")
+    is_plt = {}
+    plt_count = np.zeros(30)
+    offsets = np.linspace(-50,35,len(plt_count))
+    for i, offset in enumerate(offsets):
+        polygon = polygon_with_offset(offset)
+        path = mplPath.Path(polygon)
+        is_plt[i] =  1*pd.Series([(path.contains_point(pnt,radius=0.01) or path.contains_point(pnt,radius=-0.01)) for pnt in X])
+        plt_count[i] = is_plt[i].sum()
+    diff = np.diff(plt_count) # n of cells in the slice
+    w = np.array([1,2,3,2,1])
+    diff[2:-2] = np.convolve(diff, w / np.sum(w),mode="valid")
+    
+    diff2 = diff[1:]/diff[:-1]
+    
+    d_min_cells = np.argmin(diff)
+    d_max_cells = np.argmax(diff)
+    
+    try:
+        try:
+            d_valid_diff = np.min(np.where(diff2[d_max_cells:] < 0.97)[0]) + d_max_cells
+            d_max_diff = np.min(np.where(diff2[d_valid_diff:] > 0.97)[0]) + d_valid_diff
+        except:
+            d_max_diff = d_min_cells
+            
+        try:
+            d = np.max(np.where(diff[:d_max_diff] > 1.7*diff[d_max_diff])[0]) # Différence relative
+            #d = max(d, np.max(np.where(diff[:d_max_diff] > diff[d_max_diff] + 0.1*np.max(diff))[0])) # Différence absolue
+        except:
+            d = d_max_diff
+        #print(d_min_cells,d_max_diff, d)
+        
+
+    except:
+    
+        plt.figure()
+        plt.title("Diff")
+        plt.plot(diff)
+        plt.figure()
+        plt.title("Diff2")
+        plt.plot(diff2)
+        raise
     """
     plt.figure()
-
-    for label in np.unique(db.labels_):
-        plt.scatter(X_t[db.labels_ == label][:,0],
-                    X_t[db.labels_ == label][:,1],s=0.5)
+    plt.scatter(X[:,0],X[:,1],s=.1)
+    plt.plot(polygon_with_offset(offsets[d_min_cells])[:,0],
+             polygon_with_offset(offsets[d_min_cells])[:,1], label="Min cells")
+    plt.plot(polygon_with_offset(offsets[d_max_diff])[:,0],
+             polygon_with_offset(offsets[d_max_diff])[:,1], label="rebounce")
+    plt.plot(polygon_with_offset(offsets[d])[:,0],
+             polygon_with_offset(offsets[d])[:,1], label="chosen = %d" % d)
+    plt.legend()
     """
-    return db.labels_
+    return is_plt[int(d)]
+    
 
-def refine_clustering(X,labels,selected_cluster):
-    """
-    Sometimes, cells which are a bit above the platelets cloud are included. We get rid of them.
-    :param X:
-    :param labels:
-    :param selected_cluster:
-    :return:
-    """
 
-    Y = X[labels==selected_cluster]
-    pca = PCA().fit(Y)
-    if pca.components_[1,0] > 0:
-        pca.components_[1,:] = - pca.components_[1,:]
-
-    # This is a bit cheating, but I'm rorating a bit the PCA matrix to better cut out the outliers
-    alpha=-0.035
-    M = np.array([[np.cos(alpha),np.sin(alpha)],[-np.sin(alpha),np.cos(alpha)]])
-    pca.components_ = M @ pca.components_
-    X_t = pca.transform(Y)
-
-    # Detect the discontinuity, if there is one
-    m = np.median(X_t[:,1]) - 4*np.std(X_t[:,1])
-    M = np.median(X_t[:,1]) + 4*np.std(X_t[:,1])
-    n_bins = 35
-    hist,edges = np.histogram(X_t[:,1],bins=np.linspace(m,M,n_bins),density=False)
-    summit = np.argmax(hist)
-    first_0 = n_bins-2
-
-    min_hist = 3 # If a slice has less than min_hist cells, then we consider this slice to be a gap and the end of platelets.
-    for k in range(summit,n_bins-2):
-        if hist[k] < min_hist:
-            first_0 = k
-            break
-        elif hist[k-1] + hist[k] < 2.5*min_hist:
-            first_0 = k
-            break
-    first_0_index = first_0
-    first_0 = edges[first_0_index]
-    labels[labels == selected_cluster] = selected_cluster*(X_t[:,1] < first_0) + 1*(X_t[:,1] >= first_0)
-    return labels
-
-def tag_platelets_of_assay(X):
-    labels = get_clusters(X.copy())
-
-    valid_labels = labels[np.where(X[:, 1] < 150)]  # Used to determine good cluster
-    labels_unique = np.unique(valid_labels, return_counts=True)
-    sel_c_index = np.argmax(labels_unique[1])
-    selected_cluster = labels_unique[0][sel_c_index]
-    # print(len(valid_labels),selected_cluster,sel_c_index)
-
-    labels = refine_clustering(X,labels,selected_cluster)
-    # We check if the cluster doesn't go left until the edge
-    #if np.min(X[:,0]) < np.min(X[labels == selected_cluster,0]) * 1.01:
-    #
-
-    return 1 * (labels == selected_cluster)
-
-def tag_platelets(df, export_folder):
+def tag_platelets(df, export_folder, expected_counts = None):
     """
     This is where platelets are tagged
     A few cells are discarded by hand using simple gating, partly to reduce
@@ -324,8 +292,6 @@ def tag_platelets(df, export_folder):
     :return: A dataframe containing all measurements and a column PLT
     equal to 1 if the cell is a platelet
     """
-
-    print("Tag platelets")
 
     df["PLT"] = 0
     n = 0
@@ -337,41 +303,29 @@ def tag_platelets(df, export_folder):
         if not os.path.exists("%s/clustering_train/%s" % (export_folder,exp)):
             os.makedirs("%s/clustering_train/%s" % (export_folder,exp))
 
-    for ID in tqdm(ids):
+    for ID in ids:
         n += 1
-
-        '''cond_0 = (df["Side Fluorescence Signal"] > 17.5) \
-                                    & (df.ID == ID) \
-                                    & (df["Forward Scatter Pulse Width Signal"] > 0.1) \
-                                    & (df["Side Fluorescence Signal"] <= 220) \
-                                    & (df["Forward Scatter Signal"] < 190)'''
-
-        cond_0 = (df["Side Fluorescence Signal"] > 17.5) \
-            & (df.ID == ID) \
-            & (df["Side Fluorescence Signal"] <= 220) \
-            & (df["Forward Scatter Signal"] < 190) \
-            & (df["Forward Scatter Signal"] < df ["Side Fluorescence Signal"] + 70)
-
+        
         for exp in exps:
-            cond = (df.exp == exp) & cond_0
+            cond = (df.exp == exp) & (df.ID == ID)  #& cond_0
             X = df.loc[cond][['Side Fluorescence Signal', 'Forward Scatter Signal']].values
+            expected = None
+            if expected_counts is not None:
+                expected = expected_counts.loc[ID]
+            PLT = tag_platelets_of_assay(X.copy(), expected)
+            df.loc[cond, "PLT"] = PLT.values
+            #if exp == "wb":
+            #    fig = plt.figure()
+            #    ax = fig.add_subplot(111)
+            #    ax.scatter(df.loc[cond,"Side Fluorescence Signal"],
+            #        df.loc[cond,"Forward Scatter Signal"],
+            #        c=df.loc[cond,"PLT"],s=1)
+            #    ax.set_title("%s %s" % (ID,exp))
+            #    plt.savefig("%s/clustering_train/%s/%s.png" % (export_folder,exp,ID))
 
-            df.loc[cond, "PLT"] = tag_platelets_of_assay(X)
+    #print("%.2f  of cells are platelets" % (df["PLT"].mean()))
 
-            if exp == "wb":
-
-                fig = plt.figure()
-                ax = fig.add_subplot(111)
-                ax.scatter(df.loc[cond,"Side Fluorescence Signal"],
-                    df.loc[cond,"Forward Scatter Signal"],
-                    c=df.loc[cond,"PLT"],s=1)
-                ax.set_title("%s %s" % (ID,exp))
-                plt.savefig("%s/clustering_train/%s/%s.png" % (export_folder,exp,ID))
-
-    print("%.2f  of cells are platelets" % (df["PLT"].mean()))
-
-    return df
-
+    return df      
 
 def filter_with_count(df, sys_phen):
     """

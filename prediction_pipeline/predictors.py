@@ -5,7 +5,7 @@ from sklearn.metrics import r2_score
 from sklearn.decomposition import PCA
 from scipy.special import comb
 from scipy.stats import pearsonr
-from tqdm.notebook import tqdm
+from tqdm import tqdm
 from sklearn.ensemble import GradientBoostingRegressor
 
 import pandas as pd
@@ -139,9 +139,9 @@ class predictor():
         Y_ = Y_t.copy()
 
         # Adjust phenotypes
-        self.lm_y = LinearRegression().fit(sys_phen[["PLT_count","MPV","PDW","PCT"]],Y_)
+        self.lm_y = LinearRegression().fit(sys_phen[["PLT_wb","MPV_wb","PDW_wb","PCT_wb"]],Y_)
         if adjust_y:
-            sys_pred = self.lm_y.predict(sys_phen[["PLT_count","MPV","PDW","PCT"]])
+            sys_pred = self.lm_y.predict(sys_phen[["PLT_wb","MPV_wb","PDW_wb","PCT_wb"]])
         else:
             sys_pred = np.zeros(X_.shape[0])
         Y_ = Y_-sys_pred
@@ -157,8 +157,8 @@ class predictor():
         """
 
         #Option 2: ajuster les features
-        self.lr = LinearRegression().fit(sys_phen[["PLT_count","MPV","PDW","PCT"]],X_)
-        X_ = X_ - self.lr.predict(sys_phen.loc[X_.index,["PLT_count","MPV","PDW","PCT"]])
+        self.lr = LinearRegression().fit(sys_phen[["PLT_wb","MPV_wb","PDW_wb","PCT_wb"]],X_)
+        X_ = X_ - self.lr.predict(sys_phen.loc[X_.index,["PLT_wb","MPV_wb","PDW_wb","PCT_wb"]])
         #X_load = pd.DataFrame(data=self.pca.fit_transform(X_),index=X_.index)
         #
         #self.lm = LinearRegression().fit(X_load,Y_)
@@ -175,7 +175,7 @@ class predictor():
 
     def predict(self,X_,sys_phen,adjust_y): # ,n_comps_pls,n_comps_pca
         if adjust_y:
-            sys_pred = self.lm_y.predict(sys_phen[["PLT_count","MPV","PDW","PCT"]])
+            sys_pred = self.lm_y.predict(sys_phen[["PLT_wb","MPV_wb","PDW_wb","PCT_wb"]])
         else:
             sys_pred = np.zeros(X_.shape[0])
 
@@ -186,7 +186,7 @@ class predictor():
         X_ = pd.DataFrame(data=self.pca.inverse_transform(X_load),index=X_.index)
         """
         # Option 2
-        X_ = X_ - self.lr.predict(sys_phen.loc[X_.index,["PLT_count","MPV","PDW","PCT"]])
+        X_ = X_ - self.lr.predict(sys_phen.loc[X_.index,["PLT_wb","MPV_wb","PDW_wb","PCT_wb"]])
         #X_load = pd.DataFrame(data=self.pca.transform(X_),index=X_.index)
         #preds_lm = pd.Series(data=self.lm.predict(X_load) + sys_pred,index=X_.index)
         preds_lm = pd.Series(data=self.lm.predict(X_)[:,0] + sys_pred, index=X_.index)
