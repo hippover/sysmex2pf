@@ -1,4 +1,5 @@
 params.json
 data/*
+interval_processing/*
 .*
 *__pycache__*
