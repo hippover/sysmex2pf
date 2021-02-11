@@ -31,62 +31,6 @@ datadir = "/home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hv270/data_home"
 
 # Mostly loaders
 
-def build_df(files, exp):
-    """
-    :param files: list of FACS files
-    :param exp: type of assay (rest, adp, ...)
-    :return: dataframe containing all valid measurements contained in the files list
-    """
-
-    columns = ["Side Fluorescence Signal",
-               "Forward Scatter Signal",
-               'Side Scatter Signal']
-#               'Forward Scatter Pulse Width Signal']
-
-    users = [f.split('][')[-2].split("_")[0] for f in files]
-    for i in range(len(users)):
-        if users[i][-2:] == "FB":
-            users[i] = users[i][:-2]
-
-    dfs = []
-    appended_IDs = []
-    for k in range(len(users)):
-        ID = users[k]
-        if ID not in appended_IDs:
-            meas = FCMeasurement(ID='Test Sample', datafile=files[k]).data[columns]
-            meas["ID"] = ID
-            dfs.append(meas.copy())
-            appended_IDs.append(users[k])
-        else:
-            print("Duplicate file for ID %s : %s" % (ID,files[k]))
-
-    df_ = pd.concat(dfs, copy=False)
-    df_.reset_index(inplace=True)
-
-    del df_["index"]
-    df_["exp"] = exp
-    print(exp, len(df_.ID.unique().tolist()))
-
-    select_cond = (df_["Side Fluorescence Signal"] > 0.1) & \
-                  (df_["Side Fluorescence Signal"] <= 220) & \
-                  (df_["Forward Scatter Signal"] <= 200)
-
-    return df_.loc[select_cond]
-
-
-def load_Sysmex(datadir):
-    """
-    :return: dataframe of all valid measurements (not only platelets)
-    """
-    os.chdir(datadir)
-    wb = glob.glob("Sysmex whole blood/**/*PLT-F].fcs", recursive=True)
-    print("%d candidates Sysmex WB files" % len(wb))
-
-    files_exp = [[wb, "wb"]]
-
-    return pd.concat([build_df(f[0], f[1]) for f in files_exp], copy=False)
-
-
 def plot_id_exp(full_df, ID, exp):
     """
     :param full_df: Dataframe from which measurements should be taken
@@ -150,6 +94,21 @@ def load_info():
     return info
 
 
+def clean_column_names(df):
+    "remove brackets surrounding column names"
+    to_rename = {}
+    cols = df.columns
+    for c in cols:
+        if c[0]=="[" and c[-1]=="]":
+            if c[1:-1] in cols:
+                del df[c]
+            else:
+                to_rename[c] = c[1:-1]
+    df = df.rename(columns=to_rename)
+    df = df.dropna(axis=1)
+    df = df
+    return df
+
 def load_sys_phenotypes(datadir):
     """
     :return: A dataframe containing IPF, PLT, PCT, MPV and PDW for all donors x assays
@@ -157,62 +116,56 @@ def load_sys_phenotypes(datadir):
     os.chdir(datadir)
     summaries = glob.glob("Sysmex whole blood/**/*SAMPLE*.csv",recursive=True)
     print("%d candidates summary files" % len(summaries))
-    IDs = list()
-    exps = list()
-    PLTs = list()
-    IPFs = list()
-    is_PLT_Fs = list()
-    MPVs = list()
-    PDWs = list()
-    PCTs = list()
-    dates = list()
+    
+    dfs = [clean_column_names(pd.read_csv(f,skiprows=1)) for f in summaries]
+    df = pd.concat(dfs,axis=0,ignore_index=True)
+    df["Sample No."] = df["Sample No."].str.lstrip(" ")
+    FB = df["Sample No."].str[-2:] == "FB"
+    df.loc[FB,"Sample No."] = df.loc[FB,"Sample No."].str[:-2]
+    df.rename(columns={"Sample No.":"ID"},inplace=True)
+    
+    print("Initially %d rows, %d unique IDs" % (df.shape[0],df["ID"].nunique()))    
+    df = df.sort_values("Time",ascending=True)
+    q_cols = ["PLT(10^9/L)","IPF(%)","MPV(fL)","PDW(fL)","PCT(%)"]
+    cols_of_interest = q_cols + ["PLT Info."]
+    for q in q_cols:
+        df[q] = pd.to_numeric(df[q],errors="coerce")
+    
+    df.dropna(subset=cols_of_interest,inplace=True)
+    df.drop_duplicates("ID",keep="last",inplace=True)
+    print("Finally %d rows, %d unique IDs" % (df.shape[0],df["ID"].nunique()))
+    
+    df.rename(columns={"PLT(10^9/L)":"PLT",
+               "IPF(%)":"IPF",
+               "MPV(fL)":"MPV",
+               "PDW(fL)":"PDW",
+               "PCT(%)":"PCT"},inplace=True)
+    return df
+  
+  
+def ID_from_filename(f):
+    r = f.split("[")[-2][:-1]
+    if r[-2:] == "FB":
+        r = r[:-2]
+    return r
 
-    n_errors = 0
-    for f in summaries:
-        s = pd.read_csv(f, skiprows=1)
-        ID = [s["Sample No."].iloc[i][:-2].lstrip(" ") for i in range(s.shape[0])]
-        exp = ["wb" for i in range(s.shape[0])]
-        date = [f.split("/")[2].split("_")[0] for k in range(s.shape[0])]
-        
-        try:
-            PLT = s["PLT(10^9/L)"].tolist()
-            IPF = s["IPF(%)"].tolist()
-            MPV = s["MPV(fL)"].tolist()
-            PDW = s["PDW(fL)"].tolist()
-            PCT = s["PCT(%)"].tolist()
-            is_PLT_F = [1 * (source == "PLT-F") for source in s["PLT Info."]]
-        except BaseException as error:
-            print(f)
-            print(s.columns)
-            print(error)
-            n_errors += 1
-            continue
-
-        IDs += ID
-        exps += exp
-        PLTs += PLT
-        IPFs += IPF
-        is_PLT_Fs += is_PLT_F
-        MPVs += MPV
-        PDWs += PDW
-        PCTs += PCT
-        dates += date
-
-    plt_df = pd.DataFrame.from_dict(data={"ID": IDs, "exp": exps, "PLT_count": PLTs,
-                                          "IPF": IPFs, "is_PLT_F": is_PLT_Fs,
-                                          "MPV": MPVs, "PDW": PDWs, "PCT": PCTs, "date": dates
-                                          }, orient="columns")
-
-    for c in ["IPF", "MPV", "PDW", "PCT", "PLT_count"]:
-        if plt_df[c].dtype not in [float, int]:
-            print("Missing values of %s : %.2f" % (c, (plt_df[c] == "----").mean()))
-            plt_df.loc[plt_df[c] == "----", c] = plt_df.loc[plt_df[c] != "----", c].median()
-            plt_df[c] = plt_df[c].astype(float)
-    print("Reading errors : %d" % n_errors)
-    plt_df = plt_df.sort_values("is_PLT_F", ascending=False)
-    plt_df = plt_df.drop_duplicates(["ID", "exp"], keep="first")
-
-    return plt_df
+def load_Sysmex(datadir):
+    """
+    :return: dataframe of all valid measurements (not only platelets)
+    """
+    os.chdir(datadir)
+    wb = glob.glob("Sysmex whole blood/**/*PLT-F].fcs", recursive=True)
+    print("%d candidates Sysmex WB files" % len(wb))
+    dfs = []
+    for f in wb:
+        meas = FCMeasurement(ID='Test Sample', datafile=f)
+        df = meas.data
+        df["ID"] = ID_from_filename(f)
+        dfs.append(df)
+    df = pd.concat(dfs, copy=False)
+    df.dropna(axis=0,how="any",inplace=True)
+    
+    return df
 
 # Actual clustering happens here
 
@@ -227,7 +180,7 @@ def polygon_with_offset(offset):
 def tag_platelets_of_assay(X, expected):
     #print("Using polygon")
     is_plt = {}
-    plt_count = np.zeros(30)
+    plt_count = np.zeros(20)
     offsets = np.linspace(-50,35,len(plt_count))
     for i, offset in enumerate(offsets):
         polygon = polygon_with_offset(offset)
