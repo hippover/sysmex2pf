@@ -1,0 +1,16 @@
+PLINK v1.90b6.24 64-bit (6 Jun 2021)
+Options in effect:
+  --meta-analysis /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/27_july/chr_1_BKP_0.ADP_PSEL.glm.linear /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/27_july/chr_1_BKP_10.ADP_PSEL.glm.linear /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/27_july/chr_1_BKP_11.ADP_PSEL.glm.linear /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/27_july/chr_1_BKP_12.ADP_PSEL.glm.linear /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/27_july/chr_1_BKP_13.ADP_PSEL.glm.linear /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/27_july/chr_1_BKP_14.ADP_PSEL.glm.linear /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/27_july/chr_1_BKP_15.ADP_PSEL.glm.linear /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/27_july/chr_1_BKP_16.ADP_PSEL.glm.linear /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/27_july/chr_1_BKP_1.ADP_PSEL.glm.linear /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/27_july/chr_1_BKP_2.ADP_PSEL.glm.linear /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/27_july/chr_1_BKP_3.ADP_PSEL.glm.linear /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/27_july/chr_1_BKP_4.ADP_PSEL.glm.linear /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/27_july/chr_1_BKP_5.ADP_PSEL.glm.linear /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/27_july/chr_1_BKP_6.ADP_PSEL.glm.linear /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/27_july/chr_1_BKP_7.ADP_PSEL.glm.linear /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/27_july/chr_1_BKP_8.ADP_PSEL.glm.linear /home/hv270/rds/rds-who1000-cbrc/user/wja24/shared/hippolyte_only/interval_processing/27_july/chr_1_BKP_9.ADP_PSEL.glm.linear + qt no-map weighted-z
+  --meta-analysis-ess-field OBS_CT
+  --meta-analysis-p-field P
+  --meta-analysis-snp-field ID
+
+Hostname: cpu-e-402
+Working directory: /home/hv270/sysmex2pf
+Start time: Mon Aug 16 15:01:39 2021
+
+Random number seed: 1629122499
+385220 MB RAM detected; reserving 192610 MB for main workspace.
+--meta-analysis: 1 variant processed; results written to plink.meta .
+
+End time: Mon Aug 16 15:01:39 2021
