@@ -165,7 +165,7 @@ def ID_from_filename(f):
     return r
 
 
-def load_Sysmex(datadir, root_dir="Sysmex whole blood"):
+def load_Sysmex(datadir, root_dir="Sysmex whole blood", remove_rbc=True):
     """
     :return: dataframe of all valid measurements (not only platelets)
     """
@@ -173,28 +173,30 @@ def load_Sysmex(datadir, root_dir="Sysmex whole blood"):
     wb = glob.glob("%s/**/*PLT-F].fcs" % root_dir, recursive=True)
     print("%d candidates Sysmex WB files" % len(wb))
     dfs = []
-    IDs = []
+    IDs = {}
     for f in wb:
         meas = FCMeasurement(ID='Test Sample', datafile=f)
         df = meas.data
         ID = ID_from_filename(f)
 
         # Filter out those measured along with RBC
-        df["bin_200"] = np.arange(df.shape[0]) // 200
-        mean_by_200 = df.groupby("bin_200")["Forward Scatter Signal"].mean()
-        try:
-            cutoff = np.min(
-                np.where(mean_by_200 > np.mean(mean_by_200[:3])+30)[0])
-        except ValueError as e:
-            cutoff = df["bin_200"].max()
-        df = df.loc[df.bin_200 < cutoff]
-        del df["bin_200"]
+        if remove_rbc:
+            df["bin_200"] = np.arange(df.shape[0]) // 200
+            mean_by_200 = df.groupby("bin_200")["Forward Scatter Signal"].mean()
+            try:
+                cutoff = np.min(
+                    np.where(mean_by_200 > np.mean(mean_by_200[:3])+30)[0])
+            except ValueError as e:
+                cutoff = df["bin_200"].max()
+            df = df.loc[df.bin_200 < cutoff]
+            del df["bin_200"]
         if ID in IDs:
             print("Two files for ID %s" % ID)
-            print("Second file is %s" % f)
+            print("\t %s" % f)
+            print("\t %s" % IDs[ID])
             continue
         else:
-            IDs.append(ID)
+            IDs[ID] = f
             df["ID"] = ID
             dfs.append(df)
     df = pd.concat(dfs, copy=False)

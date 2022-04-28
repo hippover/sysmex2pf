@@ -2,4 +2,8 @@ params.json
 data/*
 interval_processing/*
 .*
+*.txt
+*.csv
+*.pdf
+*.png
 *__pycache__*
