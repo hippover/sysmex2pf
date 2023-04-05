@@ -204,7 +204,7 @@ def load_Sysmex(datadir, root_dir="Sysmex whole blood", remove_rbc=True):
 
     return df
   
-  def load_agonised_sysmex(datadir, root_dir="CBR 159", remove_rbc=True):
+def load_agonised_sysmex(datadir, root_dir="CBR 159", remove_rbc=True):
     """
     :return: dataframe of all valid measurements (not only platelets)
     """
