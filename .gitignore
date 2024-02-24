@@ -4,6 +4,8 @@ interval_processing/*
 .*
 *.txt
 *.csv
+*.tsv
 *.pdf
 *.png
 *__pycache__*
+*.xlsx
